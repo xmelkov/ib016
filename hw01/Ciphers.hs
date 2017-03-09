@@ -57,6 +57,7 @@ module Ciphers (
 import Data.Char
 import Data.List
 import Data.Function
+import Data.Maybe
 
 -- | Encrypt the given plaintext using monoaplhabetic substitution according to
 -- the permutation given in the for of associative list. In this case the range
@@ -92,14 +93,14 @@ import Data.Function
 -- "abcde"
 
 isValidSubstitution :: [(Char,Char)] -> Bool
-isValidSubstitution permutation = let sortedDomain = (sort . fst . unzip) permutation
-                                      sortedImage = (sort . snd . unzip) permutation
-                                  in all id [(==) sortedDomain sortedImage, not (any id $ zipWith (==) sortedDomain $ tail sortedDomain)]
+isValidSubstitution permutation = let sortedDomain = (sort . map fst) permutation
+                                      sortedImage = (sort . map snd) permutation
+                                  in sortedDomain == sortedImage && not (or $ zipWith (==) sortedDomain $ tail sortedDomain)
 
 encryptSubstitution :: [(Char, Char)] -- ^ Character permutation
                     -> String         -- ^ Plaintext
                     -> String         -- ^ Ciphertext
-encryptSubstitution permutation plaintext = if isValidSubstitution permutation then map (\c -> maybe c id $ lookup c permutation) plaintext
+encryptSubstitution permutation plaintext = if isValidSubstitution permutation then map (\c -> fromMaybe c $ lookup c permutation) plaintext
                                                                                else error "Provided substitution is not a permutation"
 
 -- | Decrypt the given plaintext using monoaplhabetic substitution.
@@ -116,7 +117,7 @@ encryptSubstitution permutation plaintext = if isValidSubstitution permutation t
 decryptSubstitution :: [(Char, Char)] -- ^ Character permutation
                     -> String         -- ^ Ciphertext
                     -> String         -- ^ Plaintext
-decryptSubstitution permutation = encryptSubstitution (map (\(a,b) -> (b,a)) $ permutation)
+decryptSubstitution permutation = encryptSubstitution (map (\(a,b) -> (b,a)) permutation)
 
 -- | Shifts each input character by adding given shift value (modulo 26). This
 -- works only on English lowercase letters. That is, if @'a'@ is shifted by 3,
@@ -140,17 +141,17 @@ validCaesarLetter :: Char -> Bool
 validCaesarLetter = (&&) <$> isAlpha <*> isLower
 
 normalizeLetter :: Char -> Int
-normalizeLetter = (flip (-) (fromEnum 'a')) . fromEnum
+normalizeLetter = flip (-) (fromEnum 'a') . fromEnum
 
 shiftLetter :: Int -> Char -> Char
-shiftLetter shift c = if (validCaesarLetter c) then ((toEnum) . ((+) (fromEnum 'a')) . (`rem` 26) . ((+) shift) . normalizeLetter) c
-                                               else c
+shiftLetter shift c = if validCaesarLetter c then (toEnum . (fromEnum 'a' +) . (`rem` 26) . (shift +) . normalizeLetter) c
+                                             else c
 
 encryptCaesar :: Int    -- ^ Shift
               -> String -- ^ Plaintext
               -> String -- ^ Ciphertext
-encryptCaesar shift = if (shift <= 0) then error "Shift must be positive number"
-                                      else map (shiftLetter shift)
+encryptCaesar shift = if shift <= 0 then error "Shift must be positive number"
+                                    else map (shiftLetter shift)
 
 inverseShift :: Int -> Int
 inverseShift = (-) 26 . flip rem 26
@@ -170,8 +171,8 @@ inverseShift = (-) 26 . flip rem 26
 decryptCaesar :: Int    -- ^ Shift
               -> String -- ^ Plaintext
               -> String -- ^ Ciphertext
-decryptCaesar shift = if (shift <= 0) then error "Shift must be positive number"
-                                      else map (shiftLetter (inverseShift shift))
+decryptCaesar shift = if shift <= 0 then error "Shift must be positive number"
+                                    else map (shiftLetter (inverseShift shift))
 
 -- | Adds characters from the input 'String' and from key 'String' modulo 26.
 -- It works only on characters @'a'..'z'@.  If the key string is shorter then
@@ -192,7 +193,7 @@ decryptCaesar shift = if (shift <= 0) then error "Shift must be positive number"
 encryptVigenere :: String -- ^ Key string
                 -> String -- ^ Plaintext
                 -> String -- ^ Ciphertext
-encryptVigenere keyString = zipWith shiftLetter (cycle $ if (null keyString) then [0] else map normalizeLetter keyString)
+encryptVigenere keyString = zipWith shiftLetter (cycle $ if null keyString then [0] else map normalizeLetter keyString)
 
 -- | Decrypt the given plaintext using Vigenere cipher.
 -- For detailed specification, see 'encryptVigenere'.
@@ -208,7 +209,7 @@ encryptVigenere keyString = zipWith shiftLetter (cycle $ if (null keyString) the
 decryptVigenere :: String -- ^ Key string
                 -> String -- ^ Plaintext
                 -> String -- ^ Ciphertext
-decryptVigenere keyString = zipWith shiftLetter (cycle $ map inverseShift $ if (null keyString) then [0] else map normalizeLetter keyString)
+decryptVigenere keyString = zipWith shiftLetter (cycle $ map inverseShift $ if null keyString then [0] else map normalizeLetter keyString)
 
 -- | Combines several ciphers into one, using each one for a block of given
 -- size. For example @applyMultiple [f, g] 4 plain@ applies cipher @f@ to first 4
@@ -250,12 +251,13 @@ applyMultiple :: [String -> String] -- ^ List of encryption functions
               -> String             -- ^ Plaintext
               -> String             -- ^ Ciphertext
 applyMultiple [] _ p = p
-applyMultiple functions blockSize plaintext = if (blockSize <= 0) then plaintext
-                                                                  else applyMultiple' (cycle functions) blockSize $ splitAt blockSize plaintext
+applyMultiple functions blockSize plaintext = if blockSize <= 0 then plaintext
+                                                                else applyMultiple' (cycle functions) blockSize $ splitAt blockSize plaintext
 
 applyMultiple' :: [String -> String] -> Int -> (String,String) -> String
+applyMultiple' [] _ _ = undefined
 applyMultiple' _ _ ([],[]) = []
-applyMultiple' functions@(f:fs) blockSize (processedBlock,rest) = (f processedBlock) ++ applyMultiple' fs blockSize (splitAt blockSize rest)
+applyMultiple' (f:fs) blockSize (processedBlock,rest) = f processedBlock ++ applyMultiple' fs blockSize (splitAt blockSize rest)
 
 -- | Interactive cryptanalysis assistant for monoalphabetic substitution cipher.
 --
@@ -333,7 +335,7 @@ applyMultiple' functions@(f:fs) blockSize (processedBlock,rest) = (f processedBl
 -- you implement.
 
 lowerCaseEncrypt :: [(Char,Char)] -> Char -> Char
-lowerCaseEncrypt permutation c = maybe (toUpper c) id $ lookup (toLower c) permutation
+lowerCaseEncrypt permutation c = fromMaybe (toUpper c) $ lookup c $ map (\(a,b) -> (b,a)) permutation
 
 readCipherPlainTextLetters :: IO (Char,Char)
 readCipherPlainTextLetters = do
@@ -341,42 +343,42 @@ readCipherPlainTextLetters = do
     c <- getCharFromLine
     putStr "Plaintext letter:"
     p <- getCharFromLine
-    return (c,p)
+    return (p,c)
 
 getCharFromLine :: IO Char
 getCharFromLine = do
     line <- getLine
-    return $ maybe ' ' id $ find (not . isSpace) line
+    return $ fromMaybe ' ' $ find (not . isSpace) line
 
 processCommand :: Char -> [(Char,Char)] -> IO [(Char,Char)]
 processCommand command substitutions = case command of 
                                          'q' -> return substitutions
-                                         'r' -> putStrLn "Set of substitutions erased" >> return []
+                                         'r' -> putStrLn "Set of substitutions erased\n" >> return []
                                          'a' -> do
-                                             (c,p) <- readCipherPlainTextLetters
-                                             if uncurry (on (||) isSpace) (c,p) then 
+                                             (p,c) <- readCipherPlainTextLetters
+                                             if uncurry (on (||) isSpace) (p,c) then 
                                                 do
-                                                    putStrLn "Space entered!"
+                                                    putStrLn "Space entered!\n"
                                                     return substitutions
-                                             else case find (\(a,b) -> (||) (b == c) (a == p) ) substitutions of
-                                                    Just pair@(a,b) -> do
-                                                        putStrLn $ "Set of substitution rules already contains pair " ++ show pair
+                                             else case find (\(a,b) -> (||) (a == p) (b == c)) substitutions of
+                                                    Just pair -> do
+                                                        putStrLn $ "Set of substitution rules already contains pair " ++ show pair ++ "\n"
                                                         return substitutions
                                                     Nothing -> do
-                                                        putStrLn $ "Pair " ++ show (p,c) ++ " added into substitutions"
+                                                        putStrLn $ "Pair " ++ show (p,c) ++ " added into substitutions\n"
                                                         return $ substitutions ++ [(p,c)]
                                          'd' -> do
                                              pair <- readCipherPlainTextLetters
                                              if uncurry (on (||) isSpace) pair then do
-                                                 putStrLn "Space entered!"
+                                                 putStrLn "Space entered!\n"
                                                  return substitutions
-                                             else if elem pair substitutions then do
-                                                     putStrLn $ "Pair " ++ show pair ++ " deleted"
+                                             else if pair `elem` substitutions then do
+                                                     putStrLn $ "Pair " ++ show pair ++ " deleted\n"
                                                      return $ delete pair substitutions
                                                   else do
-                                                     putStrLn $ "Pair " ++ show pair ++ " not found"
-                                                     return $ substitutions
-                                         _ -> putStrLn "Invalid command!" >> return substitutions
+                                                     putStrLn $ "Pair " ++ show pair ++ " not found\n"
+                                                     return substitutions
+                                         _ -> putStrLn "Invalid command!\n" >> return substitutions
 
 help :: IO ()
 help = putStrLn "\ta (add new substitution pair)" >> putStrLn "\td (delete substitution pair)" >>
@@ -391,19 +393,19 @@ assistantRec cryptotext substitutions = do
     putStrLn "Current state of decryption (CIPHERTEXT, plaintext)"
     putStrLn $ map (lowerCaseEncrypt substitutions) cryptotext
     putStr "Current substitutions: "
-    putStrLn $ intercalate "," $ map (\(a,b) -> a:[] ++ "->" ++ (toUpper b) : []) substitutions
+    putStrLn $ intercalate "," $ map (\(a,b) -> [a] ++ "->" ++ [toUpper b]) substitutions
     help
-    putStr "Current choice: "
+    putStr "\nCurrent choice: "
     commandString <- getLine
-    let commandChar = maybe ' ' id (find (not . isSpace) commandString)
-    if (commandChar == ' ') then do
+    let commandChar = fromMaybe ' ' (find (not . isSpace) commandString)
+    if commandChar == ' ' then do
         putStrLn "No command entered"
         assistantRec cryptotext substitutions
     else do
-        substitutions <- processCommand commandChar substitutions
-        if (commandChar == 'q') then 
-            if (not $ isValidSubstitution substitutions) then do
+        substitutions' <- processCommand commandChar substitutions
+        if commandChar == 'q' then 
+            if not $ isValidSubstitution substitutions' then do
                 putStrLn "Resulting substitution is not valid"
                 return []
-            else return substitutions 
-        else assistantRec cryptotext substitutions
+            else return substitutions'
+        else assistantRec cryptotext substitutions'
