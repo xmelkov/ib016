@@ -335,8 +335,59 @@ applyMultiple' functions@(f:fs) blockSize (processedBlock,rest) = (f processedBl
 lowerCaseEncrypt :: [(Char,Char)] -> Char -> Char
 lowerCaseEncrypt permutation c = maybe (toUpper c) id $ lookup (toLower c) permutation
 
-{-assistant :: String            -- ^ Ciphertext
+readCipherPlainTextLetters :: IO (Char,Char)
+readCipherPlainTextLetters = do
+    putStr "Ciphertext letter:"
+    c <- getChar
+    putStr "\nPlaintext letter:"
+    p <- getChar
+    return (c,p)
+
+processCommand :: Char -> [(Char,Char)] -> IO [(Char,Char)]
+processCommand command substitutions = case command of 
+                                         'q' -> return substitutions
+                                         'r' -> return []
+                                         'a' -> do
+                                             (c,p) <- readCipherPlainTextLetters
+                                             case find (\(a,b) -> (||) (b == c) (a == p) ) substitutions of
+                                                 Just pair@(a,b) -> do
+                                                     putStrLn $ "Set of substitution rules already contains pair " ++ show pair
+                                                     return substitutions
+                                                 Nothing -> do
+                                                     putStrLn $ "Pair " ++ show (p,c) ++ " added into substitutions"
+                                                     return $ substitutions ++ [(p,c)]
+                                         {-'d' -> do
+                                             (c,p) <- readCipherPlainTextLetters
+                                             case find (\(a,b) -> (&&) (b == c) (a == p) ) substitutions of
+                                                 Just pair@(a,b) -> do
+                                                     putStrLn $ "Set of substitution rules already contains pair " ++ show pair
+                                                     return substitutions
+                                                 Nothing -> do
+                                                     putStrLn $ "Pair " ++ show (p,c) ++ " added into substitutions"
+                                                     return $ substitutions ++ [(p,c)]-}
+                                         _ -> putStrLn "Invalid command!" >> return substitutions
+
+help :: IO ()
+help = putStrLn "\ta (add new substitution pair)" >> putStrLn "\td (delete substitution pair)" >>
+       putStrLn "\tr (reset current substitution)" >> putStrLn "\tq (quit assistant)"
+
+assistant :: String            -- ^ Ciphertext
           -> IO [(Char, Char)] -- ^ Final substitution
-assistant = do
-    putStrLn "Current state of decryption (CIPHER)"
-    return [('a','b')]-}
+assistant = flip assistantRec []
+
+assistantRec :: String -> [(Char,Char)] -> IO [(Char,Char)]
+assistantRec cryptotext substitutions = do
+    putStrLn "Current state of decryption (CIPHERTEXT, plaintext)"
+    putStrLn $ map (lowerCaseEncrypt substitutions) cryptotext
+    putStr "Current substitutions"
+    putStrLn $ intercalate "," $ map (\(a,b) -> a:[] ++ "->" ++ (toUpper b) : []) substitutions
+    help
+    putStr "Current choice: "
+    commandString <- getLine
+    let commandChar = maybe ' ' id (find (not . isSpace) commandString)
+    if (commandChar == ' ') then do
+        putStrLn "No command entered"
+        assistantRec cryptotext substitutions
+    else do
+        substitutions <- processCommand commandChar substitutions
+        if (commandChar == 'q') then return substitutions else assistantRec cryptotext substitutions
