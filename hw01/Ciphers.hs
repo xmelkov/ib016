@@ -339,7 +339,7 @@ readCipherPlainTextLetters :: IO (Char,Char)
 readCipherPlainTextLetters = do
     putStr "Ciphertext letter:"
     c <- getCharFromLine
-    putStr "\nPlaintext letter:"
+    putStr "Plaintext letter:"
     p <- getCharFromLine
     return (c,p)
 
@@ -351,7 +351,7 @@ getCharFromLine = do
 processCommand :: Char -> [(Char,Char)] -> IO [(Char,Char)]
 processCommand command substitutions = case command of 
                                          'q' -> return substitutions
-                                         'r' -> return []
+                                         'r' -> putStrLn "Set of substitutions erased" >> return []
                                          'a' -> do
                                              (c,p) <- readCipherPlainTextLetters
                                              if uncurry (on (||) isSpace) (c,p) then 
@@ -368,8 +368,8 @@ processCommand command substitutions = case command of
                                          'd' -> do
                                              pair <- readCipherPlainTextLetters
                                              if uncurry (on (||) isSpace) pair then do
-                                                    putStrLn "Space entered!"
-                                                    return substitutions
+                                                 putStrLn "Space entered!"
+                                                 return substitutions
                                              else if elem pair substitutions then do
                                                      putStrLn $ "Pair " ++ show pair ++ " deleted"
                                                      return $ delete pair substitutions
@@ -390,7 +390,7 @@ assistantRec :: String -> [(Char,Char)] -> IO [(Char,Char)]
 assistantRec cryptotext substitutions = do
     putStrLn "Current state of decryption (CIPHERTEXT, plaintext)"
     putStrLn $ map (lowerCaseEncrypt substitutions) cryptotext
-    putStr "Current substitutions"
+    putStr "Current substitutions: "
     putStrLn $ intercalate "," $ map (\(a,b) -> a:[] ++ "->" ++ (toUpper b) : []) substitutions
     help
     putStr "Current choice: "
@@ -401,4 +401,9 @@ assistantRec cryptotext substitutions = do
         assistantRec cryptotext substitutions
     else do
         substitutions <- processCommand commandChar substitutions
-        if (commandChar == 'q') then return substitutions else assistantRec cryptotext substitutions
+        if (commandChar == 'q') then 
+            if (not $ isValidSubstitution substitutions) then do
+                putStrLn "Resulting substitution is not valid"
+                return []
+            else return substitutions 
+        else assistantRec cryptotext substitutions
