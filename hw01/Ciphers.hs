@@ -338,10 +338,15 @@ lowerCaseEncrypt permutation c = maybe (toUpper c) id $ lookup (toLower c) permu
 readCipherPlainTextLetters :: IO (Char,Char)
 readCipherPlainTextLetters = do
     putStr "Ciphertext letter:"
-    c <- getChar
+    c <- getCharFromLine
     putStr "\nPlaintext letter:"
-    p <- getChar
+    p <- getCharFromLine
     return (c,p)
+
+getCharFromLine :: IO Char
+getCharFromLine = do
+    line <- getLine
+    return $ maybe ' ' id $ find (not . isSpace) line
 
 processCommand :: Char -> [(Char,Char)] -> IO [(Char,Char)]
 processCommand command substitutions = case command of 
@@ -349,22 +354,28 @@ processCommand command substitutions = case command of
                                          'r' -> return []
                                          'a' -> do
                                              (c,p) <- readCipherPlainTextLetters
-                                             case find (\(a,b) -> (||) (b == c) (a == p) ) substitutions of
-                                                 Just pair@(a,b) -> do
-                                                     putStrLn $ "Set of substitution rules already contains pair " ++ show pair
-                                                     return substitutions
-                                                 Nothing -> do
-                                                     putStrLn $ "Pair " ++ show (p,c) ++ " added into substitutions"
-                                                     return $ substitutions ++ [(p,c)]
-                                         {-'d' -> do
-                                             (c,p) <- readCipherPlainTextLetters
-                                             case find (\(a,b) -> (&&) (b == c) (a == p) ) substitutions of
-                                                 Just pair@(a,b) -> do
-                                                     putStrLn $ "Set of substitution rules already contains pair " ++ show pair
-                                                     return substitutions
-                                                 Nothing -> do
-                                                     putStrLn $ "Pair " ++ show (p,c) ++ " added into substitutions"
-                                                     return $ substitutions ++ [(p,c)]-}
+                                             if uncurry (on (||) isSpace) (c,p) then 
+                                                do
+                                                    putStrLn "Space entered!"
+                                                    return substitutions
+                                             else case find (\(a,b) -> (||) (b == c) (a == p) ) substitutions of
+                                                    Just pair@(a,b) -> do
+                                                        putStrLn $ "Set of substitution rules already contains pair " ++ show pair
+                                                        return substitutions
+                                                    Nothing -> do
+                                                        putStrLn $ "Pair " ++ show (p,c) ++ " added into substitutions"
+                                                        return $ substitutions ++ [(p,c)]
+                                         'd' -> do
+                                             pair <- readCipherPlainTextLetters
+                                             if uncurry (on (||) isSpace) pair then do
+                                                    putStrLn "Space entered!"
+                                                    return substitutions
+                                             else if elem pair substitutions then do
+                                                     putStrLn $ "Pair " ++ show pair ++ " deleted"
+                                                     return $ delete pair substitutions
+                                                  else do
+                                                     putStrLn $ "Pair " ++ show pair ++ " not found"
+                                                     return $ substitutions
                                          _ -> putStrLn "Invalid command!" >> return substitutions
 
 help :: IO ()
